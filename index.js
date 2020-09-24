@@ -1,6 +1,7 @@
 const express = require('express')
 const bodyParser = require('body-parser');
 var fs = require('fs');
+const cors = require('cors');
 
 const { MongoClient } = require('mongodb');
 
@@ -8,12 +9,15 @@ const app = express()
 const port = process.env.PORT || 3000;
 app.use(express.static('assets'))
 
-
-
 const DB_USER = "admin";
 const PASSWORD = "qwerty123"
 const dbname = 'typer'
 const uri = `mongodb://admin:${PASSWORD}@typer-shard-00-00.ckxnu.mongodb.net:27017,typer-shard-00-01.ckxnu.mongodb.net:27017,typer-shard-00-02.ckxnu.mongodb.net:27017/${dbname}?ssl=true&replicaSet=atlas-z4wo1g-shard-0&authSource=admin&retryWrites=true&w=majority`;
+
+const corsFunctions = require('./cors');
+const { allowCrossDomain } = require('./cors');
+app.use(corsFunctions.allowCrossDomain);
+app.use(cors(corsFunctions.corsOptions));
 
 
 const rand = (min, max) => Math.floor(Math.random() * (max - min) + min);
@@ -106,7 +110,9 @@ function readWords() {
 }
 
 app.get('/allwords/:count', (req, res) => {
-    let count = req.params.count;
+    let count = req.params.count * 1;
+    let minlen = count * 4 + count
+    let maxlen = count * 6 + count
 
     get_words().then(words => {
         let wordsarr = []
@@ -114,29 +120,66 @@ app.get('/allwords/:count', (req, res) => {
             if (key != '_id') wordsarr = wordsarr.concat(words[key])
 
         }
-
+        let len = 0
         let result = []
 
-        for (let i = 0; i < count; i++)
-            result.push(wordsarr[rand(0, wordsarr.length - 1)].trim())
+        while (len < minlen || len > maxlen) {
+            len = 0
+            result = []
 
+            for (let i = 0; i < count; i++) {
+                let word = wordsarr[rand(0, wordsarr.length - 1)].trim()
+                len += word.length + 1
+                result.push(word)
+
+            }
+
+        }
         res.json(JSON.stringify(result))
     })
 
 
 })
 
-app.get('/words/:count/:letter', (req, res) => {
-    let count = req.params.count;
-    let letter = req.params.letter;
+app.get('/words/:count/:currentletter/:letters', (req, res) => {
+    let count = req.params.count * 1;
+    let currentletter = req.params.currentletter.toLowerCase();
+    let letters = new Set(req.params.letters.toLowerCase());
+    let minlen = count * 4 + count
+    let maxlen = count * 6 + count
+    get_words(currentletter).then(words => {
+        words = words[currentletter]
 
-    get_words(letter).then(words => {
-        words = words[letter]
+        let len = 0
         let result = []
 
-        for (let i = 0; i < count; i++)
-            result.push(words[rand(0, words.length - 1)].trim())
+        while (len < minlen || len > maxlen) {
+            len = 0
+            result = []
 
+            for (let i = 0; i < count; i++) {
+                let allletterscorrect = false
+                let word = ''
+                while (!allletterscorrect) {
+                    allletterscorrect = true
+                    word = words[rand(0, words.length - 1)].trim()
+                    for (let letter of word.split('')) {
+                        if (!letters.has(letter)) {
+                            console.log(word.split(''))
+                            allletterscorrect = false
+                            break
+                        }
+                    }
+                }
+
+                len += word.length + 1
+                result.push(word)
+
+            }
+            console.log(len, minlen, maxlen)
+
+        }
+        console.log(result)
         res.json(JSON.stringify(result))
     })
 
