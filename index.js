@@ -2,6 +2,7 @@ const express = require('express')
 const bodyParser = require('body-parser');
 var fs = require('fs');
 const cors = require('cors');
+const socketPackage = require('socket.io');
 
 const { MongoClient } = require('mongodb');
 
@@ -9,7 +10,6 @@ const app = express()
 const port = process.env.PORT || 3000;
 app.use(express.static('assets'))
 
-const DB_USER = "admin";
 const PASSWORD = "qwerty123"
 const dbname = 'typer'
 const uri = `mongodb://admin:${PASSWORD}@typer-shard-00-00.ckxnu.mongodb.net:27017,typer-shard-00-01.ckxnu.mongodb.net:27017,typer-shard-00-02.ckxnu.mongodb.net:27017/${dbname}?ssl=true&replicaSet=atlas-z4wo1g-shard-0&authSource=admin&retryWrites=true&w=majority`;
@@ -20,7 +20,85 @@ app.use(corsFunctions.allowCrossDomain);
 app.use(cors(corsFunctions.corsOptions));
 
 
+let server = app.listen(port, () => {
+    console.log(`Example app listening at http://localhost:${port}`)
+})
+
+
 const rand = (min, max) => Math.floor(Math.random() * (max - min) + min);
+let io = socketPackage(server)
+
+
+let players = {}
+
+
+function getSocketsKeys(sockets) {
+    let keys = [];
+    for (let key in sockets)
+        keys.push(key);
+    return keys
+}
+
+function getPlayers(sockets) {
+    let active_players = []
+
+    for (let socket of getSocketsKeys(sockets)) {
+        if (players[socket]) {
+            active_players.push(players[socket])
+        }
+    }
+
+    return active_players
+}
+
+io.on('connection', (socket) => {
+
+    socket.on('creating-connection', data => {
+        players[socket.id] = {
+            socket: socket.id,
+            displayName: data.displayName,
+            photoURL: data.photoURL
+        }
+
+        socket.emit('me', players[socket.id])
+        io.sockets.emit('players-share', getPlayers(io.sockets.connected))
+    })
+
+    socket.on('disconnect', data => {
+        io.sockets.emit('players-share', getPlayers(io.sockets.connected))
+    })
+
+    socket.on('invite', data => {
+        io.sockets.sockets[data.to.socket].emit('invitation', {
+            from: data.from,
+            sample_words: data.sample_words
+        })
+    })
+
+    socket.on('reject', data => {
+        io.sockets.sockets[data.from.socket].emit('game-rejected')
+    })
+
+    socket.on('accept', data => {
+        console.log(data)
+        io.sockets.sockets[data.to.socket].emit('game-begin', data)
+        io.sockets.sockets[data.from.socket].emit('game-begin', {
+            to: data.from,
+            from: data.to
+        })
+    })
+
+    socket.on('client-type', data => {
+        io.sockets.sockets[data.from.socket].emit('server-type', data.key)
+    })
+
+    socket.on('game-over', data => {
+        io.sockets.sockets[data].emit('you-won', data)
+    })
+
+
+})
+
 
 async function insert_words(words_data) {
     const client = new MongoClient(uri, { useUnifiedTopology: true, useNewUrlParser: true });
@@ -165,7 +243,6 @@ app.get('/words/:count/:currentletter/:letters', (req, res) => {
                     word = words[rand(0, words.length - 1)].trim()
                     for (let letter of word.split('')) {
                         if (!letters.has(letter)) {
-                            console.log(word.split(''))
                             allletterscorrect = false
                             break
                         }
@@ -176,16 +253,11 @@ app.get('/words/:count/:currentletter/:letters', (req, res) => {
                 result.push(word)
 
             }
-            console.log(len, minlen, maxlen)
 
         }
-        console.log(result)
         res.json(JSON.stringify(result))
     })
 
 })
 
 
-app.listen(port, () => {
-    console.log(`Example app listening at http://localhost:${port}`)
-})
