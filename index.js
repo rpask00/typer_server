@@ -64,7 +64,9 @@ io.on('connection', (socket) => {
         io.sockets.emit('players-share', getPlayers(io.sockets.connected))
     })
 
-    socket.on('disconnect', data => {
+    socket.on('disconnect', id => {
+        if (socket.id == id) socket.close()
+
         io.sockets.emit('players-share', getPlayers(io.sockets.connected))
     })
 
@@ -80,7 +82,6 @@ io.on('connection', (socket) => {
     })
 
     socket.on('accept', data => {
-        console.log(data)
         io.sockets.sockets[data.to.socket].emit('game-begin', data)
         io.sockets.sockets[data.from.socket].emit('game-begin', {
             to: data.from,
@@ -92,8 +93,10 @@ io.on('connection', (socket) => {
         io.sockets.sockets[data.from.socket].emit('server-type', data.key)
     })
 
-    socket.on('game-over', data => {
-        io.sockets.sockets[data].emit('you-won', data)
+
+    socket.on('endGame', gameInfo => {
+        io.sockets.sockets[gameInfo.from.socket].emit('onEndGame', 'win')
+        io.sockets.sockets[gameInfo.to.socket].emit('onEndGame', 'lose')
     })
 
 
